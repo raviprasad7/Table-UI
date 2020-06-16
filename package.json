@@ -1,0 +1,26 @@
+{
+  "name": "myapp",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "format": "prettier \"src/**/*.{js, html}\" --write",
+    "serve": "parcel src/index.html",
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "compile": "babel src/index.js --out-file app-compiled.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "D": "^1.0.0",
+    "frappe-charts": "^1.5.0",
+    "prettier": "^2.0.5",
+    "simple-datatables": "^2.1.13"
+  },
+  "devDependencies": {
+    "@babel/cli": "^7.10.1",
+    "@babel/core": "^7.10.2",
+    "parcel-bundler": "^1.12.4"
+  }
+}

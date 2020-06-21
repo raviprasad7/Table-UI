@@ -2,17 +2,17 @@ import DOMUtils from './dom_utils';
 
 class TableUI {
 	constructor(wrapper, config) {
-		if (typeof wrapper === 'string') {
-			wrapper = document.querySelector(wrapper);
-		}
+    (typeof wrapper === 'string') && (wrapper = document.querySelector(wrapper));
 		if (!(wrapper instanceof HTMLElement)) {
 			throw new Error(`Invalid value for wrapper`);
 		}
     this.initDefaultValues();
 		this.wrapper = wrapper;
     this.config = {...this.config, ...config};
-    this.rows = this.config.data;
+    this.allRows = this.config.data;
+    this.updateRowChunkRange();
 
+    this.instance = this;
     this.instanceId = `tb-instance-${TableUI.instanceId++}`;
 
 		this.initializeTable();
@@ -21,10 +21,13 @@ class TableUI {
     this.config = {
       headers: [],
 			data: [],
-			firstColumnSticky: false,
+			stickyColumns: [],
       showRowNumber: false,
       cellHeight: 40
     }
+    this.rowChunkStart = 0;
+    this.rowChunkEnd = 0;
+    this.rowChunkWindow = 50;
   }
 	initializeTable() {
 		let table = DOMUtils.createDiv('table-ui', ['table-ui', this.instanceId]);
@@ -41,24 +44,14 @@ class TableUI {
     this.initEvents(table);
 	}
 	initializeTableHeader(header) {
-    let config = this.config;
-		let hRow = `
-      <div class="tb-row tb-row--header">
-        ${this.config.showRowNumber?`<div class="tb-cell tb-cell--header tb-cell--row-number">#</div>`:``}
-        ${this.config.headers
-					.map((col, index) => {
-            let classList = `tb-cell tb-cell-col${index} tb-cell--header`;
-            if(config.stickyColumns.includes(index+1)) {
-							classList += ' tb-col--sticky';
-						}
-						return `<div class="${classList}">${col}</div>`;
-					}).join('')}
-      </div>
-    `;
-		header.innerHTML = hRow;
+    let headerRow = DOMUtils.getHeaderRowHTML(this.config);
+		header.innerHTML = headerRow;
 	}
 	initializeTableBody(body) {
-    let bodyEl = DOMUtils.getRowsHTML(this.rows, 0, this.config);
+    let { config, allRows, rowChunkEnd } = this;
+    let rowsToDisplay = allRows.slice(0, rowChunkEnd);
+    let bodyEl = DOMUtils.getRowsHTML(rowsToDisplay, 0, config);
+    (rowChunkEnd<allRows.length) && (bodyEl += DOMUtils.getRowSkeletonHTML(this.instance));
 		body.innerHTML = bodyEl;
   }
   initStyles(table) {
@@ -68,14 +61,18 @@ class TableUI {
     this.tableStyles = styleEle.sheet;
     this.setDimensions();
   }
+  updateRowChunkRange() {
+    this.rowChunkStart += 50;
+    this.rowChunkEnd = Math.min(this.rowChunkEnd+this.rowChunkWindow, this.allRows.length);
+  }
   setDimensions() {
+    let { config, allRows } = this;
+    let { CLASS } = DOMUtils;
     let wrapperWidth = this.wrapper.offsetWidth;
-    let eachColumnWidth = parseInt(wrapperWidth/(this.config.headers.length));
-    this.removeStyle('.tb-cell', ['width', 'height']);
-    this.setStyle('.tb-cell', [['width', eachColumnWidth+'px'], ['height', this.config.cellHeight+'px']]);
-    let surrogateHeight = document.createElement('div');
-    surrogateHeight.style = 'opacity: 0; position: absolute; width: 1px; height: 4640px; top: 0px;';
-    this.tableBody.prepend(surrogateHeight);
+    let eachColumnWidth = parseInt(wrapperWidth/(config.headers.length));
+    this.removeStyle(`.${CLASS.CELL}`, ['width', 'height']);
+    (config.showRowNumber) && (this.setStyle(`.${CLASS.CELL_ROW_NO}`, [['width', '60px']]));
+    this.setStyle(`.${CLASS.CELL}`, [['width', eachColumnWidth+'px'], ['height', config.cellHeight+'px']]);
   }
   setStyle(selector, props) {
     let styleEle = this.tableStyles;
@@ -97,17 +94,39 @@ class TableUI {
       }
     }
   }
-  initEvents() {
+  initEvents(table) {
+    let config = this.config;
     let windowResize = () => this.setDimensions();
     window.addEventListener('resize', windowResize);
     let scrollToTop = () => {
       this.tableBody.scrollIntoView({ block: 'end' });
     }
     document.addEventListener('DOMContentLoaded', scrollToTop);
+    let tableHeight = this.wrapper.offsetHeight, tableScrollHeight = (config.cellHeight*(this.rowChunkEnd+2));
+    let scrollEvent = (e) => {
+      requestAnimationFrame(()=>{
+        let scrollPercent = parseInt((e.target.scrollTop+tableHeight)*100/tableScrollHeight);
+        if(scrollPercent>99) {
+          this.addMoreRows();
+          tableScrollHeight += (config.cellHeight*(this.rowChunkWindow));
+        }
+      });
+    }
+    table && table.addEventListener('scroll', scrollEvent);
     this.wrapper.addEventListener('onDestroy', ()=>{
       window.removeEventListener('resize', windowResize);
       document.removeEventListener('DOMContentLoaded', scrollToTop);
+      table.removeEventListener('scroll', scrollEvent);
     });
+  }
+  addMoreRows() {
+    setTimeout(()=>{
+      let newRows = this.allRows.slice(this.rowChunkEnd, this.rowChunkEnd+this.rowChunkWindow);
+      let newNodes = DOMUtils.getRowsHTML(newRows, this.rowChunkEnd, this.config);
+      this.updateRowChunkRange();
+      (this.rowChunkEnd<this.allRows.length) && (newNodes += DOMUtils.getRowSkeletonHTML(this.instance));
+      this.tableBody.innerHTML += newNodes;
+    }, 200);
   }
   destroyTable() {
     this.wrapper.innerHTML = '';
